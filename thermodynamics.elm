@@ -1,20 +1,16 @@
 import Color exposing (..)
+import Debug
 import Graphics.Collage exposing (..)
 import Graphics.Element exposing (..)
 import Time exposing (..)
 import List exposing (map)
+import Math.Vector2 exposing (..)
+import Signal exposing (..)
+import Random exposing (generate, list, pair, float, int)
 
+type Wall = Left | Right | Top | Bottom
 
--- WHAT
-zip : List a -> List b -> List (a,b)
-zip xs ys =
-  case (xs, ys) of
-    ( x :: xs', y :: ys' ) ->
-        (x,y) :: zip xs' ys'
-
-    (_, _) ->
-        []
-
+type Collision = DiscCollision DiscRecord DiscRecord | WallCollision Wall
 
 type alias Model = List DiscRecord
 
@@ -24,19 +20,20 @@ type alias DiscRecord =
   , vx       : Float
   , vy       : Float
   , collided : Bool
+  , id       : Int
   }
 
 collageSize : Float
-collageSize = 500
+collageSize = 900
 
 discSize : Float
 discSize = 10
 
 discRadius : Float
-discRadius = (discSize / 2) + 5
+discRadius = (discSize / 2)
 
 upperBound : Float
-upperBound = collageSize / 2
+upperBound = (collageSize / 2) - 7
 
 lowerBound : Float
 lowerBound = -upperBound
@@ -44,44 +41,97 @@ lowerBound = -upperBound
 truncateToBounds : Float -> Float -> Float -> Float
 truncateToBounds upper lower a = if a > upper then upper else (if a < lower then lower else a)
 
-collided : Float -> Float -> Bool
-collided x vx = (x > (upperBound - discRadius)) || (x < (lowerBound))
+collidedWithWall : Float -> Float -> Bool
+collidedWithWall x vx = (x > (upperBound - discRadius)) || (x < (lowerBound))
 
 newPos : Float -> Float -> Float
-newPos x vx =
-  if (collided x vx)
-  then (truncateToBounds (upperBound - discRadius) (lowerBound + discRadius) x)
-  else x + vx
+newPos x vx = (truncateToBounds (upperBound - discRadius) (lowerBound + discRadius) x) + vx
 
-newVel : Float -> Float -> Float
-newVel x vx = if (collided x vx) then -vx else vx
+reflectDisc : Vec2 -> Vec2 -> Vec2
+reflectDisc vel vectorPerpendicularToWall =
+  let
+    d         = vel
+    magnitude = length vel
+    twiceD    = Math.Vector2.scale 2 d
+    newVel    = sub d (Math.Vector2.scale ((dot twiceD vectorPerpendicularToWall )/(lengthSquared vectorPerpendicularToWall)) vectorPerpendicularToWall)
+  in
+   Math.Vector2.scale (1 * magnitude) (normalize newVel)
+
+reflectionVector : Vec2 -> Collision -> Math.Vector2.Vec2
+reflectionVector vec collision =
+  let
+    rotate v = (vec2 -(getY v) (getX v))
+    magnitude = length vec
+    newVec x y = ((Math.Vector2.scale magnitude) >> normalize) (vec2 x y)
+  in
+    case collision of
+      WallCollision Left   -> newVec  1  0
+      WallCollision Right  -> newVec -1  0
+      WallCollision Top    -> newVec  0 -1
+      WallCollision Bottom -> newVec  0  1
+      DiscCollision a b    -> (rotate << Math.Vector2.negate) (sub (vec2 a.x a.y) (vec2 b.x b.y))
+
+newVelocityVector : Vec2 -> List Collision -> Math.Vector2.Vec2
+newVelocityVector vec collisions =
+  List.foldl reflectDisc vec (List.map (reflectionVector vec) collisions)
+
+updateRecord : List (DiscRecord, DiscRecord) -> DiscRecord -> DiscRecord
+updateRecord currentCollidedPairs discRecord =
+  let
+    currentDiscCollisions = discCollisions currentCollidedPairs discRecord
+    currentWallCollisions = wallCollisions discRecord
+    currentCollisions     = currentDiscCollisions ++ currentWallCollisions
+    collided              = (not << List.isEmpty) currentCollisions
+    vel                   = vec2 discRecord.vx discRecord.vy
+    newVx                 = getX (newVelocityVector vel currentCollisions)
+    newVy                 = getY (newVelocityVector vel currentCollisions)
+  in
+    { discRecord |
+      x        <- newPos discRecord.x newVx,
+      y        <- newPos discRecord.y newVy,
+      vx       <- newVx,
+      vy       <- newVy,
+      collided <- collided --,
+    }
+
+equalById : DiscRecord -> DiscRecord -> Bool
+equalById a b = a.id == b.id
+
+discCollisions : List (DiscRecord, DiscRecord) -> DiscRecord -> List Collision
+discCollisions currentCollidedPairs discRecord =
+  let
+    otherDisc (a,b) =
+    if | equalById discRecord a -> Just b
+       | equalById discRecord b -> Just a
+       | otherwise              -> Nothing
+    collisions = List.filterMap otherDisc currentCollidedPairs
+  in
+    List.map2 DiscCollision (List.repeat (List.length collisions) discRecord) collisions
+
+wallCollisions : DiscRecord -> List Collision
+wallCollisions disc =
+  let
+    core p side = if p then [WallCollision side] else []
+    left   = core (disc.x < lowerBound + discRadius) Left
+    right  = core (disc.x > (upperBound - discRadius)) Right
+    top    = core (disc.y > (upperBound - discRadius)) Top
+    bottom = core (disc.y < lowerBound + discRadius) Bottom
+  in
+    left ++ right ++ top ++ bottom
 
 update : Float -> Model -> Model
 update dt model =
-  let currentCollidedPairs    = collidedPairs (pairs model)
-      discCollided discRecord =
-        not (
-             List.isEmpty (
-                           List.filter
-                                 (\(a,b) -> (a == discRecord) || (b == discRecord))
-                                 currentCollidedPairs
-                          )
-            )
-      updatedRecord discRecord =
-        { discRecord |
-          x        <- newPos discRecord.x discRecord.vx,
-          y        <- newPos discRecord.y discRecord.vy,
-          vx       <- newVel discRecord.x discRecord.vx,
-          vy       <- newVel discRecord.y discRecord.vy,
-          collided <- discCollided discRecord
-        }
-  in map updatedRecord model
+  let
+    currentCollidedPairs = collidedPairs (pairs model)
+  in
+     List.map (updateRecord currentCollidedPairs) model
 
-disc : Color -> Form
-disc color =
+disc : Color -> Vec2 -> Form
+disc color vec =
   group
     [ filled color (circle discSize)
     , outlined (solid grey) (circle discSize)
+    , traced (solid black) (segment (toTuple (Math.Vector2.scale -1 vec)) (toTuple (Math.Vector2.scale 3 vec)))
       ]
 
 
@@ -92,48 +142,59 @@ pairs items =
     core (x::xs) pairsSoFar =
       if   xs == []
       then pairsSoFar
-      else core xs ( (map ( \y-> (x,y) ) xs) ++ pairsSoFar)
+      else core xs ( (List.map ( \y-> (x,y) ) xs) ++ pairsSoFar)
   in
     core items []
 
 collidedPairs : List (DiscRecord, DiscRecord) -> List (DiscRecord, DiscRecord)
 collidedPairs =
   let -- don't do square root
-    distance a b       = sqrt((a.x - b.x)^2 + (a.y-b.y)^2)
-    pairCollided (a,b) = (distance a b) < ((discRadius * 2))
+    squaredDistance a b = (a.x - b.x)^2 + (a.y-b.y)^2
+    squaredMinDistance  = (discRadius * 4)^2
+    pairCollided (a,b)  = (squaredDistance a b) < squaredMinDistance
   in
     List.filter pairCollided
 
 view : Model -> Element
 view model =
   let
-    color collided = if collided then red else lightGrey
-    renderedDisc discRecord = move (discRecord.x, discRecord.y) (disc (color discRecord.collided))
+    color collided          = if collided then red else lightGrey
+    renderedDisc discRecord = move (discRecord.x, discRecord.y) (disc (color discRecord.collided) (vec2 discRecord.vx discRecord.vy))
   in
-    collage 500 500 ( (map renderedDisc model) ++ [outlined (solid red) (rect 500 500)])
+    collage (truncate collageSize) (truncate collageSize) ( (List.map renderedDisc model) ++ [outlined (solid red) (rect collageSize collageSize)])
 
 defaultDisc : DiscRecord
 defaultDisc =
   { x        = 0
   , y        = 0
-  , vx       = 2
-  , vy       = -1
+  , vx       = -1
+  , vy       = 1
   , collided = False
+  , id       = 1
   }
 
 defaultModel : Model
 defaultModel =
   let
-    offsetDisc i =
+    count                               = 150
+    randomCoordComponent                = float lowerBound upperBound
+    generateAndDiscardNewSeed generator = fst (generate generator (Random.initialSeed 0))
+    randomPositions                     = generateAndDiscardNewSeed (list count (pair randomCoordComponent randomCoordComponent))
+    randomVelocityComponent             = float -7 7
+    randomVelocities                    = generateAndDiscardNewSeed (list count (pair randomVelocityComponent randomVelocityComponent))
+    triple a b c                        = (a,b,c)
+    randomVelocitiesAndPositions        = List.map3 triple randomPositions randomVelocities [1..count]
+    offsetDisc ((x,y),(vx,vy),i) =
       { defaultDisc |
-        x <- i * 20 + defaultDisc.x,
-        y <- i * 20 + defaultDisc.y,
-        vx <- defaultDisc.vx + (0.2*i),
-        vy <- defaultDisc.vy - (0.3*i)
+        x  <- x
+      , y  <- y
+      , vx <- vx
+      , vy <- vy
+      , id <- defaultDisc.id * (truncate i)
       }
   in
-    map offsetDisc [1..10]
+    List.map offsetDisc randomVelocitiesAndPositions
 
 main : Signal Element
 main =
-  Signal.map view (Signal.foldp update defaultModel (fps 120))
+  Signal.map view (Debug.watch "model" <~ (Signal.foldp update defaultModel (fps 120)))
