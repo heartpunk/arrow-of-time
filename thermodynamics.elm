@@ -20,11 +20,10 @@ type alias DiscRecord =
   , vy       : Float
   , collided : Bool
   , id       : Int
---  , collisions : List Collision
   }
 
 collageSize : Float
-collageSize = 500
+collageSize = 900
 
 discSize : Float
 discSize = 10
@@ -45,22 +44,17 @@ collidedWithWall : Float -> Float -> Bool
 collidedWithWall x vx = (x > (upperBound - discRadius)) || (x < (lowerBound))
 
 newPos : Float -> Float -> Float
-newPos x vx =
-  if (collidedWithWall x vx)
-  then (truncateToBounds (upperBound - discRadius) (lowerBound + discRadius) x) + vx
-  else x + vx
-
-newVel : Float -> Float -> Float
-newVel x vx = if (collidedWithWall x vx) then -vx else vx
+newPos x vx = (truncateToBounds (upperBound - discRadius) (lowerBound + discRadius) x) + vx
 
 reflectDisc : Vec2 -> Vec2 -> Vec2
 reflectDisc vel vectorPerpendicularToWall =
   let
     d      = vel
+    magnitude = length vel
     twiceD = Math.Vector2.scale 2 d
     newVel = sub d (Math.Vector2.scale ((dot twiceD vectorPerpendicularToWall )/(lengthSquared vectorPerpendicularToWall)) vectorPerpendicularToWall)
   in
-    newVel
+   Math.Vector2.scale (1 * magnitude) (normalize newVel)
 
 memberBy : (a -> a -> Bool) -> a -> List a -> Bool
 memberBy f x = List.any (f x)
@@ -78,20 +72,23 @@ uniqueBy f things =
   in
     core [] f things
 
-reflectionVector : Collision -> Math.Vector2.Vec2
-reflectionVector collision =
+reflectionVector : Vec2 -> Collision -> Math.Vector2.Vec2
+reflectionVector vec collision =
   let
     rotate v = (vec2 -(getY v) (getX v))
+    magnitude = length vec
+    newVec x y = ((Math.Vector2.scale magnitude) >> normalize) (vec2 x y)
   in
     case collision of
-      WallCollision Left -> vec2 -1 -1
-      WallCollision Right -> vec2 1 1
-      WallCollision Top -> vec2 1 1
-      WallCollision Bottom -> vec2 -1 -1
-      DiscCollision a b -> (rotate << Math.Vector2.negate) (direction (vec2 a.x a.y) (vec2 b.x b.y))
+      WallCollision Left   -> newVec  1  0
+      WallCollision Right  -> newVec -1  0
+      WallCollision Top    -> newVec  0 -1
+      WallCollision Bottom -> newVec  0  1
+      DiscCollision a b -> (rotate << Math.Vector2.negate) (sub (vec2 a.x a.y) (vec2 b.x b.y))
 
 newVelocityVector : Vec2 -> List Collision -> Math.Vector2.Vec2
-newVelocityVector vec collisions = List.foldl reflectDisc vec (List.map reflectionVector collisions)
+newVelocityVector vec collisions =
+  List.foldl reflectDisc vec (List.map (reflectionVector vec) collisions)
 
 updateRecord : List (DiscRecord, DiscRecord) -> DiscRecord -> DiscRecord
 updateRecord currentCollidedPairs discRecord =
@@ -110,7 +107,6 @@ updateRecord currentCollidedPairs discRecord =
       vx       <- newVx,
       vy       <- newVy,
       collided <- collided --,
---      collisions <- currentCollisions
     }
 
 discCollisions : List (DiscRecord, DiscRecord) -> DiscRecord -> List Collision
@@ -124,8 +120,6 @@ discCollisions currentCollidedPairs discRecord =
   in
     List.map2 DiscCollision (List.repeat (List.length collisions) discRecord) collisions
 
---collidedWithWall x vx = (x > (upperBound - discRadius)) || (x < (lowerBound))
-
 wallCollisions : DiscRecord -> List Collision
 wallCollisions disc =
   let
@@ -137,12 +131,6 @@ wallCollisions disc =
   in
     left ++ right ++ top ++ bottom
 
---wallVector : Math.Vector2.Vec2
---wallVector = vec2 2.25 0.5
---
---collidePair : (DiscRecord,DiscRecord) -> (DiscRecord,DiscRecord)
---collidePair (a,b) = (reflectDisc a wallVector, reflectDisc b wallVector)
-
 ourFlatten : (List a, List a) -> List a
 ourFlatten (a,b) = a ++ b
 
@@ -153,18 +141,15 @@ update : Float -> Model -> Model
 update dt model =
   let
     currentCollidedPairs = collidedPairs (pairs model)
---    updatePair (a,b)     = (updateRecord currentCollidedPairs a, updateRecord currentCollidedPairs b)
---    postCollisionDiscs   = (ourFlatten << List.unzip << List.map (collidePair << updatePair)) currentCollidedPairs
---  in
---    uniqueBy equalById (postCollisionDiscs ++ (
   in
      List.map (updateRecord currentCollidedPairs) model
 
-disc : Color -> Form
-disc color =
+disc : Color -> Vec2 -> Form
+disc color vec =
   group
     [ filled color (circle discSize)
     , outlined (solid grey) (circle discSize)
+    , traced (solid black) (segment (toTuple (Math.Vector2.scale -1 vec)) (toTuple (Math.Vector2.scale 3 vec)))
       ]
 
 
@@ -192,29 +177,28 @@ view : Model -> Element
 view model =
   let
     color collided = if collided then red else lightGrey
-    renderedDisc discRecord = move (discRecord.x, discRecord.y) (disc (color discRecord.collided))
+    renderedDisc discRecord = move (discRecord.x, discRecord.y) (disc (color discRecord.collided) (vec2 discRecord.vx discRecord.vy))
   in
     collage (truncate collageSize) (truncate collageSize) ( (List.map renderedDisc model) ++ [outlined (solid red) (rect collageSize collageSize)])
 
 defaultDisc : DiscRecord
 defaultDisc =
-  { x        = 200
-  , y        = 200
-  , vx       = -5
-  , vy       = 5
+  { x        = 0
+  , y        = 0
+  , vx       = -1
+  , vy       = 1
   , collided = False
   , id       = 1
---  , collisions = []
   }
 
 defaultModel : Model
 defaultModel =
   let
-    count                               = 50
+    count                               = 150
     randomCoordComponent                = float lowerBound upperBound
     generateAndDiscardNewSeed generator = fst (generate generator (Random.initialSeed 0))
     randomPositions                     = generateAndDiscardNewSeed (list count (pair randomCoordComponent randomCoordComponent))
-    randomVelocityComponent             = float -20 20
+    randomVelocityComponent             = float -7 7
     randomVelocities                    = generateAndDiscardNewSeed (list count (pair randomVelocityComponent randomVelocityComponent))
     triple a b c                        = (a,b,c)
     randomVelocitiesAndPositions        = List.map3 triple randomPositions randomVelocities [1..count]
