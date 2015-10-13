@@ -91,7 +91,7 @@ updateRecord currentCollidedPairs discRecord =
       y        <- newPos discRecord.y newVy,
       vx       <- newVx,
       vy       <- newVy,
-      collided <- collided --,
+      collided <- collided
     }
 
 equalById : DiscRecord -> DiscRecord -> Bool
