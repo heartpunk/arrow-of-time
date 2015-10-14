@@ -180,7 +180,8 @@ defaultModel =
     randomCoordComponent                = float lowerBound upperBound
     generateAndDiscardNewSeed generator = fst (generate generator (Random.initialSeed 0))
     randomPositions                     = generateAndDiscardNewSeed (list count (pair randomCoordComponent randomCoordComponent))
-    randomVelocityComponent             = float -7 7
+    maxVelocity                         = 20
+    randomVelocityComponent             = float -maxVelocity maxVelocity
     randomVelocities                    = generateAndDiscardNewSeed (list count (pair randomVelocityComponent randomVelocityComponent))
     triple a b c                        = (a,b,c)
     randomVelocitiesAndPositions        = List.map3 triple randomPositions randomVelocities [1..count]
@@ -197,4 +198,4 @@ defaultModel =
 
 main : Signal Element
 main =
-  Signal.map view (Debug.watch "model" <~ (Signal.foldp update defaultModel (fps 120)))
+  Signal.map view (Debug.watch "model" <~ (Signal.foldp update defaultModel (fps 20)))
