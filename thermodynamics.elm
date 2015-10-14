@@ -62,7 +62,7 @@ reflectionVector vec collision =
   let
     rotate v = (vec2 -(getY v) (getX v))
     magnitude = length vec
-    newVec x y = ((Math.Vector2.scale magnitude) >> normalize) (vec2 x y)
+    newVec x y = (Math.Vector2.scale magnitude) (vec2 x y)
   in
     case collision of
       WallCollision Left   -> newVec  1  0
