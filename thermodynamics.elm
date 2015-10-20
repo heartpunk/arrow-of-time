@@ -74,6 +74,7 @@ reflectionVector vec collision =
       WallCollision Bottom -> newVec  0  1
       DiscCollision a b    -> (rotate << Math.Vector2.negate) (sub (vec2 a.x a.y) (vec2 b.x b.y))
 
+-- this should be DiscRecord -> List Collision -> Math.Vector2.Vec2
 newVelocityVector : Vec2 -> List Collision -> Math.Vector2.Vec2
 newVelocityVector vec collisions =
   List.foldl reflectDisc vec (List.map (reflectionVector vec) collisions)
