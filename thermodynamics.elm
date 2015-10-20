@@ -1,3 +1,5 @@
+module Thermodynamics where
+
 import Color exposing (..)
 import Debug
 import Graphics.Collage exposing (..)
@@ -75,22 +77,34 @@ newVelocityVector : Vec2 -> List Collision -> Math.Vector2.Vec2
 newVelocityVector vec collisions =
   List.foldl reflectDisc vec (List.map (reflectionVector vec) collisions)
 
-updateRecord : List (DiscRecord, DiscRecord) -> DiscRecord -> DiscRecord
-updateRecord currentCollidedPairs discRecord =
+currentFps : Float
+currentFps = 15
+
+idealTickLength : Float
+idealTickLength = ( 1000 / currentFps )
+
+currentTickOverIdeal : Float -> Float
+currentTickOverIdeal dt = (Time.inMilliseconds dt) / idealTickLength
+
+updateRecord : Float -> List (DiscRecord, DiscRecord) -> DiscRecord -> DiscRecord
+updateRecord dt currentCollidedPairs discRecord =
   let
     currentDiscCollisions = discCollisions currentCollidedPairs discRecord
     currentWallCollisions = wallCollisions discRecord
     currentCollisions     = currentDiscCollisions ++ currentWallCollisions
     collided              = (not << List.isEmpty) currentCollisions
-    vel                   = vec2 discRecord.vx discRecord.vy
-    newVx                 = getX (newVelocityVector vel currentCollisions)
-    newVy                 = getY (newVelocityVector vel currentCollisions)
+    vel                   = Math.Vector2.scale dt (toVelocityVector discRecord)
+    newVel                = newVelocityVector (toVelocityVector discRecord) currentCollisions
+    scaledNewVel          = Math.Vector2.scale ( dt / currentFps ) newVel
+    scaledNewVx           = getX scaledNewVel
+    scaledNewVy           = getY scaledNewVel
+    collisionVelocityCoefficient = 20
   in
     { discRecord |
-      x        <- newPos discRecord.x newVx,
-      y        <- newPos discRecord.y newVy,
-      vx       <- newVx,
-      vy       <- newVy,
+      x        <- newPos discRecord.x ( (if collided then collisionVelocityCoefficient else 1) * scaledNewVx ),
+      y        <- newPos discRecord.y ( (if collided then collisionVelocityCoefficient else 1) * scaledNewVy ),
+      vx       <- getX newVel,
+      vy       <- getY newVel,
       collided <- collided
     }
 
@@ -119,12 +133,17 @@ wallCollisions disc =
   in
     left ++ right ++ top ++ bottom
 
+nFix : Int -> (a -> a) -> a -> a
+nFix n f a = if n > 0 then nFix (n-1) f (f a) else a
+
 update : Float -> Model -> Model
 update dt model =
   let
     currentCollidedPairs = collidedPairs (pairs model)
+    core dt model = List.map (updateRecord dt currentCollidedPairs) model
+    iterationCount = 300
   in
-     List.map (updateRecord currentCollidedPairs) model
+     nFix iterationCount (core (dt/iterationCount)) model
 
 disc : Color -> Vec2 -> Form
 disc color vec =
@@ -198,4 +217,4 @@ defaultModel =
 
 main : Signal Element
 main =
-  Signal.map view (Debug.watch "model" <~ (Signal.foldp update defaultModel (fps 20)))
+  Signal.map view (Debug.watch "model" <~ (Signal.foldp update defaultModel (Debug.watch "dt" <~ ( Signal.map currentTickOverIdeal (Debug.watch "fps" <~ (fps currentFps) ) ) )))
