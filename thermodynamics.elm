@@ -50,7 +50,7 @@ newPos : Float -> Float -> Float
 newPos x vx = (truncateToBounds (upperBound - discRadius) (lowerBound + discRadius) x) + vx
 
 reflectDisc : Vec2 -> Vec2 -> Vec2
-reflectDisc vel vectorPerpendicularToWall =
+reflectDisc vectorPerpendicularToWall vel =
   let
     d         = vel
     magnitude = length vel
@@ -85,6 +85,12 @@ idealTickLength = ( 1000 / currentFps )
 
 currentTickOverIdeal : Float -> Float
 currentTickOverIdeal dt = (Time.inMilliseconds dt) / idealTickLength
+
+toPositionVector : DiscRecord -> Math.Vector2.Vec2
+toPositionVector dr = vec2 dr.x dr.y
+
+toVelocityVector : DiscRecord -> Math.Vector2.Vec2
+toVelocityVector dr = vec2 dr.vx dr.vy
 
 updateRecord : Float -> List (DiscRecord, DiscRecord) -> DiscRecord -> DiscRecord
 updateRecord dt currentCollidedPairs discRecord =
