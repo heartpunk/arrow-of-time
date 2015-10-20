@@ -192,6 +192,15 @@ defaultDisc =
   , id       = 1
   }
 
+flatten : List (a, a) -> List a
+flatten ((x1, x2)::xs) = [x1,x2] ++ if List.isEmpty xs then [] else flatten xs
+
+collided : List DiscRecord -> List DiscRecord
+collided discs = flatten (collidedPairs (pairs discs ) )
+
+isCollided : List DiscRecord -> DiscRecord -> Bool
+isCollided discs disc = not ( List.member disc (collided discs) )
+
 defaultModel : Model
 defaultModel =
   let
@@ -212,8 +221,10 @@ defaultModel =
       , vy <- vy
       , id <- defaultDisc.id * (truncate i)
       }
+    core = List.map offsetDisc randomVelocitiesAndPositions
+    nonCollided = List.filter (isCollided core) core
   in
-    List.map offsetDisc randomVelocitiesAndPositions
+    nonCollided
 
 main : Signal Element
 main =
