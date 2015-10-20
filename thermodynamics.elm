@@ -80,7 +80,7 @@ newVelocityVector vec collisions =
   List.foldl reflectDisc vec (List.map (reflectionVector vec) collisions)
 
 currentFps : Float
-currentFps = 15
+currentFps = 10
 
 idealTickLength : Float
 idealTickLength = ( 1000 / currentFps )
@@ -106,7 +106,7 @@ updateRecord dt currentCollidedPairs discRecord =
     scaledNewVel          = Math.Vector2.scale ( dt / currentFps ) newVel
     scaledNewVx           = getX scaledNewVel
     scaledNewVy           = getY scaledNewVel
-    collisionVelocityCoefficient = 20
+    collisionVelocityCoefficient = 5
   in
     { discRecord |
       x        <- newPos discRecord.x ( (if collided then collisionVelocityCoefficient else 1) * scaledNewVx ),
@@ -149,7 +149,7 @@ update dt model =
   let
     currentCollidedPairs = collidedPairs (pairs model)
     core dt model = List.map (updateRecord dt currentCollidedPairs) model
-    iterationCount = 300
+    iterationCount = 10
   in
      nFix iterationCount (core (dt/iterationCount)) model
 
@@ -225,8 +225,11 @@ defaultModel =
     triple a b c = (a,b,c)
     randomColors = List.map3 triple randomRedComponents randomBlueComponents randomGreenComponents
     randomPositions                     = generateAndDiscardNewSeed (list count (pair randomCoordComponent randomCoordComponent))
-    maxVelocity                         = 20
-    randomVelocityComponent             = float -maxVelocity maxVelocity
+    maxVelocity                         = 50
+    minVelocity = maxVelocity * 0.5
+    randomVelocitySign = int 0 1
+    randomVelocitySigns = generateAndDiscardNewSeed (list count (pair randomVelocitySign randomVelocitySign))
+    randomVelocityComponent             = float minVelocity maxVelocity
     randomVelocities                    = generateAndDiscardNewSeed (list count (pair randomVelocityComponent randomVelocityComponent))
     quadruple a b c d                        = (a,b,c,d)
     quintuple a b c d e                      = (a,b,c,d,e)
@@ -235,8 +238,8 @@ defaultModel =
       { defaultDisc |
         x  <- x
       , y  <- y
-      , vx <- vx
-      , vy <- vy
+      , vx <- if sx == 0 then -vx else vx
+      , vy <- if sy == 0 then -vy else vy
       , id <- defaultDisc.id * (truncate i)
       , color <- rgb r g b
       }
