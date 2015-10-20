@@ -23,6 +23,7 @@ type alias DiscRecord =
   , vy       : Float
   , collided : Bool
   , id       : Int
+  , color : Color
   }
 
 collageSize : Float
@@ -183,8 +184,8 @@ collidedPairs =
 view : Model -> Element
 view model =
   let
-    color collided          = if collided then red else lightGrey
-    renderedDisc discRecord = move (discRecord.x, discRecord.y) (disc (color discRecord.collided) (vec2 discRecord.vx discRecord.vy))
+    color dr          = if dr.collided  then red else dr.color
+    renderedDisc discRecord = move (discRecord.x, discRecord.y) (disc (color discRecord) (Math.Vector2.scale 0.2 (vec2 discRecord.vx discRecord.vy) ))
   in
     collage (truncate collageSize) (truncate collageSize) ( (List.map renderedDisc model) ++ [outlined (solid red) (rect collageSize collageSize)])
 
@@ -196,6 +197,7 @@ defaultDisc =
   , vy       = 1
   , collided = False
   , id       = 1
+  , color = lightGrey
   }
 
 flatten : List (a, a) -> List a
@@ -213,21 +215,31 @@ defaultModel =
     count                               = 150
     randomCoordComponent                = float lowerBound upperBound
     generateAndDiscardNewSeed generator = fst (generate generator (Random.initialSeed 0))
+    randomRedComponent = int 0 200
+    randomRedComponents = generateAndDiscardNewSeed ( list count randomRedComponent )
+    randomBlueComponent = int 0 255
+    randomBlueComponents = generateAndDiscardNewSeed ( list count randomRedComponent )
+    randomGreenComponent = int 0 255
+    randomGreenComponents = generateAndDiscardNewSeed ( list count randomGreenComponent )
+    triple a b c = (a,b,c)
+    randomColors = List.map3 triple randomRedComponents randomBlueComponents randomGreenComponents
     randomPositions                     = generateAndDiscardNewSeed (list count (pair randomCoordComponent randomCoordComponent))
     maxVelocity                         = 20
     randomVelocityComponent             = float -maxVelocity maxVelocity
     randomVelocities                    = generateAndDiscardNewSeed (list count (pair randomVelocityComponent randomVelocityComponent))
-    triple a b c                        = (a,b,c)
-    randomVelocitiesAndPositions        = List.map3 triple randomPositions randomVelocities [1..count]
-    offsetDisc ((x,y),(vx,vy),i) =
+    quadruple a b c d                        = (a,b,c,d)
+    quintuple a b c d e                      = (a,b,c,d,e)
+    randomVelocitiesAndPositionsAndColors = List.map5 quintuple randomPositions randomVelocities randomVelocitySigns [1..count] randomColors
+    offsetDisc ((x,y),(vx,vy),(sx,sy),i,(r,g,b)) =
       { defaultDisc |
         x  <- x
       , y  <- y
       , vx <- vx
       , vy <- vy
       , id <- defaultDisc.id * (truncate i)
+      , color <- rgb r g b
       }
-    core = List.map offsetDisc randomVelocitiesAndPositions
+    core = List.map offsetDisc randomVelocitiesAndPositionsAndColors
     nonCollided = List.filter (isCollided core) core
   in
     nonCollided
